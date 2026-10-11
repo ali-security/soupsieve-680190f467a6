@@ -1,6 +1,8 @@
 """Test utilities."""
 import unittest
 import bs4
+import subprocess
+import sys
 import textwrap
 import soupsieve as sv
 import pytest
@@ -102,6 +104,40 @@ class TestCase(unittest.TestCase):
         print('----Running Assert Test----')
         with self.assertRaises(exception):
             self.compile_pattern(pattern, namespaces=namespace, custom=custom)
+
+    def assert_syntax_error_no_timeout(self, pattern, timeout=20):
+        """
+        Assert pattern fails with a syntax error and does not hang (catastrophic backtracking).
+
+        The pattern is compiled in a separate process so that a runaway regular expression
+        can be stopped by a timeout on every platform (`signal.SIGALRM` is not available on Windows).
+        """
+
+        print('----Running Syntax Error Timeout Test----')
+        code = textwrap.dedent(
+            """
+            import sys
+            import soupsieve as sv
+
+            try:
+                sv.compile(sys.argv[1])
+            except sv.SelectorSyntaxError:
+                sys.exit(0)
+            sys.exit('SelectorSyntaxError was not raised')
+            """
+        )
+
+        try:
+            result = subprocess.run(
+                [sys.executable, '-c', code, pattern],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                timeout=timeout
+            )
+        except subprocess.TimeoutExpired:
+            self.fail('Compiling {!r} timed out after {} seconds'.format(pattern, timeout))
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def assert_selector(self, markup, selectors, expected_ids, namespaces={}, custom=None, flags=0):
         """Assert selector."""
