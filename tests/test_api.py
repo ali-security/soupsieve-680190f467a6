@@ -590,6 +590,72 @@ class TestInvalid(util.TestCase):
         with self.assertRaises(TypeError):
             sv.filter('div', "not a tag", flags=flags)
 
+    def test_excessive_selectors(self):
+        """Test excessive selectors."""
+
+        # Build a 500 KB selector string: "a,a,a,...,a" (250,000 items)
+        count = 10000
+        selector = ",".join("a" for _ in range(count))
+
+        # Compile the selector
+        with self.assertRaises(ValueError):
+            sv.compile(selector)
+
+    def test_excessive_custom_selectors(self):
+        """Test excessive custom selectors."""
+
+        # Build a 500 KB selector string: "a,a,a,...,a" (250,000 items)
+        count = 10000
+        selector = ",".join("a" for _ in range(count))
+
+        # Compile the selector
+        with self.assertRaises(ValueError):
+            sv.compile('div:--custom', custom={':--custom': selector})
+
+    def test_excessive_custom_and_normal_selectors(self):
+        """Test excessive custom and normal selectors."""
+
+        count = 5000
+        selector = ",".join("a" for _ in range(count))
+
+        # Compile the selector
+        with self.assertRaises(ValueError):
+            sv.compile(f':is({selector}):--custom', custom={':--custom': selector})
+
+    def test_excessive_repeated_custom_selectors(self):
+        """Test that reusing a custom selector counts its full selector list each time."""
+
+        # Each pattern is well under the limit on its own, but the reused custom selector amplifies it.
+        selector = ",".join("a" for _ in range(100))
+        pattern = 'div' + ':--custom' * 100
+
+        # Compile the selector
+        with self.assertRaises(ValueError):
+            sv.compile(pattern, custom={':--custom': selector})
+
+    def test_excessive_repeated_builtin_selectors(self):
+        """Test that reusing a built-in, precompiled pseudo-class counts its full selector list each time."""
+
+        # The pattern only has ~1000 tokens, but `:read-only` expands to a large precompiled selector list.
+        pattern = 'div' + ':read-only' * 1000
+
+        # Compile the selector
+        with self.assertRaises(ValueError):
+            sv.compile(pattern)
+
+    def test_selectors_under_limit(self):
+        """Test that selectors under the limit still compile and match."""
+
+        selector = ",".join("a" for _ in range(1000))
+        markup = '<div><a id="1"></a><span id="2"></span></div>'
+        soup = self.soup(markup, 'html.parser')
+
+        self.assertEqual([el['id'] for el in sv.select(selector, soup)], ['1'])
+        self.assertEqual(
+            [el['id'] for el in sv.compile('div :--custom', custom={':--custom': selector}).select(soup)],
+            ['1']
+        )
+
 
 class TestSyntaxErrorReporting(util.TestCase):
     """Test reporting of syntax errors."""
